@@ -29,7 +29,7 @@ export default function LandingPage() {
           </a>
         </div>
         <button className="bg-white text-slate-950 px-5 py-2 rounded-full text-sm font-bold hover:bg-slate-200 transition-all active:scale-95">
-          Sign In
+          Sambhav Vinay
         </button>
       </nav>
 
