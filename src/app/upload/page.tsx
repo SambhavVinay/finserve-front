@@ -224,18 +224,6 @@ export default function FinancialExtractor() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 {
-                  name: "RANBAXY NIGERIA LIMITED",
-                  type: "Financial report",
-                  size: "4.2 MB",
-                  url: "https://drive.google.com/uc?export=download&id=1WZ7mCDpkZs4RTCkxeSBXAwr79KK9V_3M",
-                },
-                {
-                  name: "Apple Inc",
-                  type: "Quarterly Financials",
-                  size: "1.8 MB",
-                  url: "https://drive.google.com/uc?export=download&id=1u9rAPV5i_SbGJhBRlyTHq0RWr611sAIy",
-                },
-                {
                   name: "Sample Income Statement.pdf",
                   type: "Accounting Sample",
                   size: "0.5 MB",
