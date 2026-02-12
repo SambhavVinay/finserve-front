@@ -10,11 +10,10 @@ import {
   Loader2,
   FileCheck,
   AlertCircle,
-  FileText, // Added for the PDF icon
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
-// Import PDF libraries
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 export default function FinancialExtractor() {
   const [file, setFile] = useState<File | null>(null);
@@ -52,103 +51,56 @@ export default function FinancialExtractor() {
     }
   };
 
-  // --- NEW PDF GENERATION LOGIC ---
-  // --- UPDATED PDF GENERATION LOGIC ---
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.width;
-
-    // 1. Professional Header
-    doc.setFillColor(15, 23, 42); // Slate-900
-    doc.rect(0, 0, pageWidth, 40, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(255, 255, 255);
-    doc.text("FINANCIAL ANALYSIS REPORT", 14, 25);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(
-      `Generated: ${new Date().toLocaleDateString()} | CONFIDENTIAL`,
-      14,
-      32,
-    );
-
-    // 2. Formatting the Content
-    const finalY = 50;
+  // --- FIXED EXCEL LOGIC: FLATTENING THE NESTED DATA ---
+  const generateExcel = () => {
+    if (!data) return;
 
     const formatKey = (str: string) =>
       str.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 
-    // NEW CLEANER DATA PROCESSING
-    const tableData = Object.entries(data).map(([key, value]) => {
-      let displayValue = "";
+    const finalRows: any[] = [];
 
+    // Process the data to ensure nested objects get their own rows
+    Object.entries(data).forEach(([key, value]) => {
       if (typeof value === "object" && value !== null) {
-        // Convert object to string, remove braces/quotes,
-        // then replace commas with newlines for vertical listing
-        displayValue = JSON.stringify(value)
-          .replace(/[{}"]/g, "") // Remove JSON junk
-          .replace(/:/g, ": ") // Add space after colons
-          .replace(/,/g, "\n") // FORCE NEW LINE for every metric
-          .split("\n") // Clean up underscores in nested keys
-          .map((line) => formatKey(line))
-          .join("\n");
+        // If it's an object (like "data"), create a header row or just skip to sub-items
+        finalRows.push({
+          "Financial Metric": `--- ${formatKey(key)} ---`,
+          Value: "",
+        });
+
+        Object.entries(value).forEach(([subKey, subValue]) => {
+          finalRows.push({
+            "Financial Metric": formatKey(subKey),
+            Value:
+              typeof subValue === "object"
+                ? JSON.stringify(subValue)
+                : subValue,
+          });
+        });
       } else {
-        displayValue = String(value);
+        // Top level simple items (like "units")
+        finalRows.push({
+          "Financial Metric": formatKey(key),
+          Value: value,
+        });
       }
-
-      return [formatKey(key), displayValue];
     });
 
-    // 3. Structured Table
-    autoTable(doc, {
-      startY: finalY,
-      head: [["Financial Metric", "Analysis Details"]],
-      body: tableData,
-      theme: "grid",
-      styles: {
-        fontSize: 10,
-        cellPadding: 6,
-        lineColor: [226, 232, 240],
-        textColor: [51, 65, 85],
-        overflow: "linebreak", // Ensure it wraps correctly
-      },
-      headStyles: {
-        fillColor: [37, 99, 235], // Blue-600
-        fontSize: 11,
-        fontStyle: "bold",
-      },
-      columnStyles: {
-        0: { fontStyle: "bold", cellWidth: 50, fillColor: [248, 250, 252] },
-        1: { cellWidth: "auto" }, // Let the values expand vertically
-      },
-      alternateRowStyles: {
-        fillColor: [255, 255, 255],
-      },
-    });
+    const worksheet = XLSX.utils.json_to_sheet(finalRows);
 
-    // 4. Footer
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(9);
-      doc.setTextColor(150);
-      doc.text(
-        `Extracted Report - Page ${i} of ${pageCount}`,
-        pageWidth / 2,
-        doc.internal.pageSize.height - 10,
-        { align: "center" },
-      );
-    }
+    // Auto-size columns roughly
+    const wscols = [{ wch: 35 }, { wch: 45 }];
+    worksheet["!cols"] = wscols;
 
-    doc.save(`Financial_Summary_${Date.now()}.pdf`);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Financial Analysis");
+
+    XLSX.writeFile(workbook, `Financial_Report_${Date.now()}.xlsx`);
   };
 
   return (
     <main className="min-h-screen bg-[#0B0F1A] text-slate-200 font-sans pb-20">
-      {/* Navigation (unchanged) */}
       <nav className="flex items-center justify-between px-8 py-6 bg-[#0B0F1A]/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50">
         <Link href="/" className="flex items-center gap-2 group">
           <ChevronLeft className="text-slate-500 group-hover:text-blue-400 transition-colors" />
@@ -164,7 +116,6 @@ export default function FinancialExtractor() {
         </div>
       </nav>
 
-      {/* Loading Overlay (unchanged) */}
       {isLoading && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#0B0F1A]/90 backdrop-blur-sm text-white">
           <div className="relative">
@@ -177,9 +128,6 @@ export default function FinancialExtractor() {
           <h2 className="mt-8 text-2xl font-bold tracking-tight">
             Analyzing Financials
           </h2>
-          <p className="mt-2 text-slate-400 animate-pulse">
-            Scanning balance sheets & income statements...
-          </p>
         </div>
       )}
 
@@ -189,12 +137,11 @@ export default function FinancialExtractor() {
             Upload Report
           </h1>
           <p className="text-slate-400 text-lg">
-            My AI will parse the document for key figures in seconds.
+            Parsed data ready for Excel export.
           </p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column */}
           <div className="lg:col-span-5">
             <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-3xl sticky top-28">
               <label className="block text-sm font-semibold text-slate-400 mb-6 uppercase tracking-wider">
@@ -215,98 +162,48 @@ export default function FinancialExtractor() {
                   >
                     <Upload size={24} />
                   </div>
-                  <div className="text-center">
-                    <p className="text-white font-medium truncate max-w-[200px]">
-                      {file ? file.name : "Choose PDF file"}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Maximum size: 50MB
-                    </p>
-                  </div>
+                  <p className="text-white font-medium truncate max-w-[200px]">
+                    {file ? file.name : "Choose PDF file"}
+                  </p>
                 </div>
               </div>
 
               <button
                 onClick={handleUpload}
                 disabled={!file || isLoading}
-                className="w-full mt-8 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2"
+                className="w-full mt-8 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
               >
                 {isLoading ? "Processing..." : "Extract Intelligence"}
               </button>
 
-              {/* SHINY NEW PDF BUTTON */}
               {data && (
                 <button
-                  onClick={generatePDF}
-                  className="w-full mt-4 relative group overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500"
+                  onClick={generateExcel}
+                  className="w-full mt-4 bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-2"
                 >
-                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
-                  <FileText
-                    size={20}
-                    className="group-hover:scale-110 transition-transform"
-                  />
-                  Save Structured PDF
+                  <FileSpreadsheet size={20} />
+                  Download Excel Sheet
                 </button>
               )}
-
-              <div className="mt-6 flex items-start gap-3 p-4 bg-slate-900/80 rounded-xl border border-slate-800">
-                <AlertCircle size={18} className="text-slate-500 shrink-0" />
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Private & Confidential: Documents are processed locally and
-                  not stored on my public servers.
-                </p>
-              </div>
             </div>
           </div>
 
-          {/* Right Column */}
           <div className="lg:col-span-7">
-            {!data && !isLoading && (
-              <div className="h-full min-h-[400px] border-2 border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center text-slate-600 italic px-12 text-center">
-                <FileCheck size={48} className="mb-4 opacity-20" />
-                <p>
-                  Extracted data will appear here once processing is complete.
-                </p>
-              </div>
-            )}
-
             {data && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-                  <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <h2 className="font-bold text-white">
-                        Extraction Successful
-                      </h2>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const blob = new Blob([JSON.stringify(data, null, 4)], {
-                          type: "application/json",
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `finbrief_${Date.now()}.json`;
-                        a.click();
-                      }}
-                      className="flex items-center gap-2 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition"
-                    >
-                      <Download size={14} /> Download JSON
-                    </button>
-                  </div>
-                  <div className="p-0">
-                    <pre className="p-6 text-sm font-mono text-blue-400 overflow-auto max-h-[700px] scrollbar-thin scrollbar-thumb-slate-700">
-                      {JSON.stringify(data, null, 4)}
-                    </pre>
-                  </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
+                  <h2 className="font-bold text-white">
+                    Extraction Successful
+                  </h2>
                 </div>
+                <pre className="p-6 text-sm font-mono text-blue-400 overflow-auto max-h-[600px]">
+                  {JSON.stringify(data, null, 4)}
+                </pre>
               </div>
             )}
           </div>
         </div>
-        <section className="max-w-5xl mx-auto px-6 mt-16 pb-20 border-t border-slate-800 pt-12">
+        <section className="mt-16 pb-20 border-t border-slate-800 pt-12">
           <div className="bg-gradient-to-br from-slate-900 to-[#0B0F1A] border border-slate-800 rounded-3xl p-8 shadow-2xl">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
               <div>
